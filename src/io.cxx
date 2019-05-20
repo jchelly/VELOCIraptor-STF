@@ -11,6 +11,7 @@
 #include "endianutils.h"
 #ifdef USEHDF
 #include "hdfitems.h"
+#include "hdf5_output.h"
 #endif
 #include "ramsesitems.h"
 #ifdef USEXDR
@@ -309,13 +310,7 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
     unsigned long noffset=0,ngtot=0,nids=0,nidstot,nuids=0,nuidstot,ng=0;
     Int_t *offset;
 #ifdef USEHDF
-    H5File Fhdf,Fhdf3;
-    H5std_string datasetname;
-    DataSpace dataspace;
-    DataSet dataset;
-    DSetCreatPropList hdfdatasetproplist;
-    hsize_t *dims,*chunk_dims;
-    hsize_t rank;
+    H5OutputFile Fhdf,Fhdf3;
     int itemp=0;
 #endif
 #ifdef USEADIOS
@@ -345,8 +340,7 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
 #ifdef USEHDF
         //create file
         else if (opt.ibinaryout==OUTHDF) {
-        Fhdf=H5File(fname,H5F_ACC_TRUNC);
-        //Fhdf.H5Fcreate(fname,H5F_ACC_TRUNC,H5P_DEFAULT,H5P_DEFAULT);
+        Fhdf.create(fname);
     }
 #endif
 #ifdef USEADIOS
@@ -373,34 +367,11 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
         //set file info
-        dims=new hsize_t[1];
-        dims[0]=1;
-        rank=1;
         itemp=0;
-        //datasetname=H5std_string("File_id");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace);
-        dataset.write(&ThisTask,datagroupnames.groupdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Num_of_files");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace);
-        dataset.write(&NProcs,datagroupnames.groupdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Num_of_groups");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace);
-        dataset.write(&ng,datagroupnames.groupdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Total_num_of_groups");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace);
-        dataset.write(&ngtot,datagroupnames.groupdatatype[itemp]);
-        itemp++;
-        delete[] dims;
+        Fhdf.write_dataset(datagroupnames.group[itemp], 1, &ThisTask) ; itemp += 1; // File_Id
+        Fhdf.write_dataset(datagroupnames.group[itemp], 1, &NProcs)   ; itemp += 1; // Num_of_files
+        Fhdf.write_dataset(datagroupnames.group[itemp], 1, &ng)       ; itemp += 1; // Num_of_groups
+        Fhdf.write_dataset(datagroupnames.group[itemp], 1, &ngtot)    ; itemp += 1; // Total_num_of_groups
     }
 #endif
 #ifdef USEADIOS
@@ -430,29 +401,8 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
     if (opt.ibinaryout==OUTBINARY) Fout.write((char*)&numingroup[1],sizeof(Int_t)*ngroups);
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        dims=new hsize_t[1];
-        chunk_dims=new hsize_t[1];
-        dims[0]=ng;
-        rank=1;
-        dataspace=DataSpace(rank,dims);
-        chunk_dims[0]=min((unsigned long)HDFOUTPUTCHUNKSIZE,ng);
-        if (chunk_dims[0]>0) {
-            // Modify dataset creation property to enable chunking
-            hdfdatasetproplist.setChunk(rank, chunk_dims);
-            // Set ZLIB (DEFLATE) Compression using level 6.
-            hdfdatasetproplist.setDeflate(6);
-            dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace, hdfdatasetproplist);
-        }
-        else {
-            dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace);
-        }
-        unsigned int *data=new unsigned int[ng];
-        for (Int_t i=1;i<=ng;i++) data[i-1]=numingroup[i];
-        dataset.write(data,datagroupnames.groupdatatype[itemp]);
+        Fhdf.write_dataset(datagroupnames.group[itemp], ng, &(numingroup[1]), H5T_NATIVE_UINT);
         itemp++;
-        delete[] data;
-        delete[] dims;
-        delete[] chunk_dims;
     }
 #endif
 #ifdef USEADIOS
@@ -497,30 +447,8 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
     if (opt.ibinaryout==OUTBINARY) Fout.write((char*)&offset[1],sizeof(Int_t)*ngroups);
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        dims=new hsize_t[1];
-        chunk_dims=new hsize_t[1];
-        dims[0]=ng;
-        rank=1;
-        // Modify dataset creation property to enable chunking
-        chunk_dims[0]=min((unsigned long)HDFOUTPUTCHUNKSIZE,ng);
-        if (chunk_dims[0]>0) {
-            hdfdatasetproplist=DSetCreatPropList();
-            hdfdatasetproplist.setChunk(rank, chunk_dims);
-            // Set ZLIB (DEFLATE) Compression using level 6.
-            hdfdatasetproplist.setDeflate(6);
-            dataspace=DataSpace(rank,dims);
-            dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace,hdfdatasetproplist);
-        }
-        else {
-            dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace);
-        }
-        unsigned long *data=new unsigned long[ng];
-        for (Int_t i=1;i<=ng;i++) data[i-1]=offset[i];
-        dataset.write(data,datagroupnames.groupdatatype[itemp]);
+        Fhdf.write_dataset(datagroupnames.group[itemp], ng, &(offset[1]), H5T_NATIVE_ULONG);
         itemp++;
-        delete[] data;
-        delete[] dims;
-        delete[] chunk_dims;
     }
 #endif
 #ifdef USEADIOS
@@ -541,30 +469,8 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
     if (opt.ibinaryout==OUTBINARY) Fout.write((char*)&offset[1],sizeof(Int_t)*ngroups);
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        dims=new hsize_t[1];
-        chunk_dims=new hsize_t[1];
-        dims[0]=ng;
-        rank=1;
-        chunk_dims[0]=min((unsigned long)HDFOUTPUTCHUNKSIZE,ng);
-        if (chunk_dims[0]>0) {
-            hdfdatasetproplist=DSetCreatPropList();
-            // Modify dataset creation property to enable chunking
-            hdfdatasetproplist.setChunk(rank, chunk_dims);
-            // Set ZLIB (DEFLATE) Compression using level 6.
-            hdfdatasetproplist.setDeflate(6);
-            dataspace=DataSpace(rank,dims);
-            dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace, hdfdatasetproplist);
-        }
-        else {
-            dataset = Fhdf.createDataSet(datagroupnames.group[itemp], datagroupnames.groupdatatype[itemp], dataspace);
-        }
-        unsigned long *data=new unsigned long[ng];
-        for (Int_t i=1;i<=ng;i++) data[i-1]=offset[i];
-        dataset.write(data,datagroupnames.groupdatatype[itemp]);
+        Fhdf.write_dataset(datagroupnames.group[itemp], ng, &(offset[1]), H5T_NATIVE_ULONG);
         itemp++;
-        delete[] data;
-        delete[] dims;
-        delete[] chunk_dims;
     }
 #endif
 #ifdef USEADIOS
@@ -605,8 +511,8 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
     }
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        Fhdf=H5File(fname,H5F_ACC_TRUNC);
-        Fhdf3=H5File(fname3,H5F_ACC_TRUNC);
+        Fhdf.create(fname);
+        Fhdf3.create(fname3);
     }
 #endif
 #ifdef USEADIOS
@@ -646,42 +552,15 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
         //set file info
-        dims=new hsize_t[1];
-        dims[0]=1;
-        rank=1;
         itemp=0;
-        //datasetname=H5std_string("File_id");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&ThisTask,datagroupnames.partdatatype[itemp]);
-        dataset = Fhdf3.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&ThisTask,datagroupnames.partdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Num_of_files");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&NProcs,datagroupnames.partdatatype[itemp]);
-        dataset = Fhdf3.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&NProcs,datagroupnames.partdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Num_of_particles_in_groups");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&nids,datagroupnames.partdatatype[itemp]);
-        dataset = Fhdf3.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&nuids,datagroupnames.partdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Total_num_of_particles_in_all_groups");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&nidstot,datagroupnames.partdatatype[itemp]);
-        dataset = Fhdf3.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        dataset.write(&nuidstot,datagroupnames.partdatatype[itemp]);
-        itemp++;
-        delete[] dims;
+        Fhdf.write_dataset (datagroupnames.group[itemp], 1, &ThisTask); // File_Id
+        Fhdf3.write_dataset(datagroupnames.group[itemp], 1, &ThisTask); itemp += 1;
+        Fhdf.write_dataset (datagroupnames.group[itemp], 1, &NProcs);   // Num_of_files
+        Fhdf3.write_dataset(datagroupnames.group[itemp], 1, &NProcs);   itemp += 1;
+        Fhdf.write_dataset (datagroupnames.group[itemp], 1, &nids);     // Num_of_particles_in_groups
+        Fhdf3.write_dataset(datagroupnames.group[itemp], 1, &nuids);     itemp += 1;
+        Fhdf.write_dataset (datagroupnames.group[itemp], 1, &nidstot);  // Total_num_of_particles_in_all_groups
+        Fhdf3.write_dataset(datagroupnames.group[itemp], 1, &nuidstot);  itemp += 1;
     }
 #endif
 #ifdef USEADIOS
@@ -723,31 +602,9 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
     if (opt.ibinaryout==OUTBINARY) Fout.write((char*)idval,sizeof(Int_t)*nids);
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        dims=new hsize_t[1];
-        chunk_dims=new hsize_t[1];
-        dims[0]=nids;
-        rank=1;
-        chunk_dims[0]=min((unsigned long)HDFOUTPUTCHUNKSIZE,nids);
-        if (chunk_dims[0]>0) {
-            hdfdatasetproplist=DSetCreatPropList();
-            // Modify dataset creation property to enable chunking
-            hdfdatasetproplist.setChunk(rank, chunk_dims);
-            // Set ZLIB (DEFLATE) Compression using level 6.
-            hdfdatasetproplist.setDeflate(6);
-            dataspace=DataSpace(rank,dims);
-            dataset = Fhdf.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace, hdfdatasetproplist);
+        if(nids > 0) {
+          Fhdf.write_dataset(datagroupnames.part[itemp], nids, idval, H5T_NATIVE_LLONG);
         }
-        else {
-            dataset = Fhdf.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        }
-        if (nids > 0){
-            long long *data=new long long[nids];
-            for (Int_t i=0;i<nids;i++) data[i]=idval[i];
-            dataset.write(data,datagroupnames.partdatatype[itemp]);
-            delete[] data;
-        }
-        delete[] dims;
-        delete[] chunk_dims;
     }
 #endif
 #ifdef USEADIOS
@@ -792,31 +649,7 @@ void WriteGroupCatalog(Options &opt, const Int_t ngroups, Int_t *numingroup, Int
     if (opt.ibinaryout==OUTBINARY) Fout3.write((char*)idval,sizeof(Int_t)*nuids);
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        dims=new hsize_t[1];
-        chunk_dims=new hsize_t[1];
-        dims[0]=nuids;
-        rank=1;
-        chunk_dims[0]=min((unsigned long)HDFOUTPUTCHUNKSIZE,nuids);
-        if (chunk_dims[0]>0) {
-            hdfdatasetproplist=DSetCreatPropList();
-            // Modify dataset creation property to enable chunking
-            hdfdatasetproplist.setChunk(rank, chunk_dims);
-            // Set ZLIB (DEFLATE) Compression using level 6.
-            hdfdatasetproplist.setDeflate(6);
-            dataspace=DataSpace(rank,dims);
-            dataset = Fhdf3.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace,hdfdatasetproplist);
-        }
-        else {
-            dataset = Fhdf3.createDataSet(datagroupnames.part[itemp], datagroupnames.partdatatype[itemp], dataspace);
-        }
-        if (nuids > 0) {
-            long long *data=new long long[nuids];
-            for (Int_t i=0;i<nuids;i++) data[i]=idval[i];
-            dataset.write(data,datagroupnames.partdatatype[itemp]);
-            delete[] data;
-        }
-        delete[] dims;
-        delete[] chunk_dims;
+        Fhdf3.write_dataset(datagroupnames.part[itemp], nuids, idval, H5T_NATIVE_LLONG);
     }
 #endif
 #ifdef USEADIOS
@@ -869,13 +702,7 @@ void WriteGroupPartType(Options &opt, const Int_t ngroups, Int_t *numingroup, In
     int *typeval;
 
 #ifdef USEHDF
-    H5File Fhdf,Fhdf2;
-    H5std_string datasetname;
-    DataSpace dataspace;
-    DataSet dataset;
-    DSetCreatPropList hdfdatasetproplist;
-    hsize_t *dims,*chunk_dims;
-    hsize_t rank;
+    H5OutputFile Fhdf,Fhdf2;
     int itemp;
 #endif
 #if defined(USEHDF)||defined(USEADIOS)
@@ -903,9 +730,9 @@ void WriteGroupPartType(Options &opt, const Int_t ngroups, Int_t *numingroup, In
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
         //create file
-        Fhdf=H5File(fname,H5F_ACC_TRUNC);
+        Fhdf.create(fname);
         //Fhdf.H5Fcreate(fname,H5F_ACC_TRUNC,H5P_DEFAULT,H5P_DEFAULT);
-        Fhdf2=H5File(fname2,H5F_ACC_TRUNC);
+        Fhdf2.create(fname2);
     }
 #endif
     else {
@@ -942,43 +769,15 @@ void WriteGroupPartType(Options &opt, const Int_t ngroups, Int_t *numingroup, In
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
         //set file info
-        dims=new hsize_t[1];
-        dims[0]=1;
-        rank=1;
         itemp=0;
-
-        //datasetname=H5std_string("File_id");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&ThisTask,datagroupnames.typesdatatype[itemp]);
-        dataset = Fhdf2.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&ThisTask,datagroupnames.typesdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Num_of_files");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&NProcs,datagroupnames.typesdatatype[itemp]);
-        dataset = Fhdf2.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&NProcs,datagroupnames.typesdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Num_of_particles_in_groups");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&nids,datagroupnames.typesdatatype[itemp]);
-        dataset = Fhdf2.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&nuids,datagroupnames.typesdatatype[itemp]);
-        itemp++;
-
-        //datasetname=H5std_string("Total_num_of_particles_in_all_groups");
-        dataspace=DataSpace(rank,dims);
-        dataset = Fhdf.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&nidstot,datagroupnames.typesdatatype[itemp]);
-        dataset = Fhdf2.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        dataset.write(&nuidstot,datagroupnames.typesdatatype[itemp]);
-        itemp++;
-        delete[] dims;
+        Fhdf.write_dataset (datagroupnames.types[itemp], 1, &ThisTask); // File_Id
+        Fhdf2.write_dataset(datagroupnames.types[itemp], 1, &ThisTask); itemp += 1;
+        Fhdf.write_dataset (datagroupnames.types[itemp], 1, &NProcs);   // Num_of_files
+        Fhdf2.write_dataset(datagroupnames.types[itemp], 1, &NProcs);   itemp += 1;
+        Fhdf.write_dataset (datagroupnames.types[itemp], 1, &nids);     // Num_of_particles_in_groups
+        Fhdf2.write_dataset(datagroupnames.types[itemp], 1, &nuids);     itemp += 1;
+        Fhdf.write_dataset (datagroupnames.types[itemp], 1, &nidstot);  // Total_num_of_particles_in_all_groups
+        Fhdf2.write_dataset(datagroupnames.types[itemp], 1, &nuidstot);  itemp += 1;
     }
 #endif
     else {
@@ -997,31 +796,7 @@ void WriteGroupPartType(Options &opt, const Int_t ngroups, Int_t *numingroup, In
     if (opt.ibinaryout==OUTBINARY) Fout.write((char*)typeval,sizeof(int)*nids);
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        dims=new hsize_t[1];
-        chunk_dims=new hsize_t[1];
-        dims[0]=nids;
-        rank=1;
-        chunk_dims[0]=min((Int_t)HDFOUTPUTCHUNKSIZE,nids);
-        if (chunk_dims[0]>0) {
-            hdfdatasetproplist=DSetCreatPropList();
-            // Modify dataset creation property to enable chunking
-            hdfdatasetproplist.setChunk(rank, chunk_dims);
-            // Set ZLIB (DEFLATE) Compression using level 6.
-            hdfdatasetproplist.setDeflate(6);
-            dataspace=DataSpace(rank,dims);
-            dataset = Fhdf.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace, hdfdatasetproplist);
-        }
-        else {
-            dataset = Fhdf.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        }
-        if (nids>0) {
-            unsigned short *data=new unsigned short[nids];
-            for (Int_t i=0;i<nids;i++) data[i]=typeval[i];
-            dataset.write(data,datagroupnames.typesdatatype[itemp]);
-            delete[] data;
-        }
-        delete[] dims;
-        delete[] chunk_dims;
+        Fhdf.write_dataset(datagroupnames.types[itemp], nids, typeval, H5T_NATIVE_USHORT);
     }
 #endif
     else for (Int_t i=0;i<nids;i++) Fout<<typeval[i]<<endl;
@@ -1039,30 +814,7 @@ void WriteGroupPartType(Options &opt, const Int_t ngroups, Int_t *numingroup, In
     if (opt.ibinaryout==OUTBINARY) Fout2.write((char*)typeval,sizeof(int)*nuids);
 #ifdef USEHDF
     else if (opt.ibinaryout==OUTHDF) {
-        dims=new hsize_t[1];
-        chunk_dims=new hsize_t[1];
-        dims[0]=nuids;
-        rank=1;
-        chunk_dims[0]=min((Int_t)HDFOUTPUTCHUNKSIZE,nuids);
-        if (chunk_dims[0]>0) {
-            hdfdatasetproplist=DSetCreatPropList();
-            // Modify dataset creation property to enable chunking
-            hdfdatasetproplist.setChunk(rank, chunk_dims);
-            // Set ZLIB (DEFLATE) Compression using level 6.
-            hdfdatasetproplist.setDeflate(6);
-            dataspace=DataSpace(rank,dims);
-            dataset = Fhdf2.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace,hdfdatasetproplist);
-        }
-        else {
-            dataset = Fhdf2.createDataSet(datagroupnames.types[itemp], datagroupnames.typesdatatype[itemp], dataspace);
-        }
-        if (nuids>0) {
-            unsigned short *data=new unsigned short[nuids];
-            for (Int_t i=0;i<nuids;i++) data[i]=typeval[i];
-            dataset.write(data,datagroupnames.typesdatatype[itemp]);
-            delete[] data;
-        }
-        delete[] dims;
+        Fhdf2.write_dataset(datagroupnames.types[itemp], nuids, typeval, H5T_NATIVE_USHORT);
     }
 #endif
     else for (Int_t i=0;i<nuids;i++) Fout2<<typeval[i]<<endl;
