@@ -73,6 +73,8 @@ int main(int argc,char **argv)
     if (ThisTask==0) cout<<"VELOCIraptor/STF running with OpenMP. Number of openmp threads: "<<nthreads<<endl;
 #endif
 
+    gsl_set_error_handler_off();
+
     Options opt;
     //get arguments
     GetArgs(argc, argv, opt);
